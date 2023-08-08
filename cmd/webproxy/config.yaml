@@ -1,0 +1,5 @@
+RootCA:
+  Key: "rootCA.key"
+  Cert: "rootCA.crt"
+DumpDir: "dump"
+ListenIPAddr: "192.168.10.54"
