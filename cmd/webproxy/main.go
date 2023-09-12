@@ -137,19 +137,39 @@ func proxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.WriteHeader(resp.StatusCode)
-
-	// レスポンスをファイルに保存する
+	// ホスト名のディレクトリを作成する
+	if !fileExists(conf.DumpDir + "/" + r.Host) {
+		os.MkdirAll(conf.DumpDir+"/"+r.Host, 0700)
+	}
 	hash := md5.Sum([]byte(r.URL.String()))
-	fh, err := os.Create(conf.DumpDir + "/" + time.Now().Format("20060102150405") + "." + fmt.Sprintf("%016x", hash) + "_header.txt")
+	// リクエストをファイルに保存する
+	freqh, err := os.Create(conf.DumpDir + "/" + r.Host + "/" + time.Now().Format("20060102150405") + "." + fmt.Sprintf("%016x", hash) + "_request_header.txt")
 	if err != nil {
 		log.Printf("failed to create file: %v", err)
 		return
 	}
-	defer fh.Close()
-	resp.Header.Write(fh)
+	defer freqh.Close()
+	r.Header.Write(freqh)
+	// リクエストボディをファイルに保存する
+	freqb, err := os.Create(conf.DumpDir + "/" + r.Host + "/" + time.Now().Format("20060102150405") + "." + fmt.Sprintf("%016x", hash) + "_request_body.txt")
+	if err != nil {
+		log.Printf("failed to create file: %v", err)
+		return
+	}
+	defer freqb.Close()
+	io.Copy(freqb, r.Body)
+
+	// レスポンスをファイルに保存する
+	fresph, err := os.Create(conf.DumpDir + "/" + r.Host + "/" + time.Now().Format("20060102150405") + "." + fmt.Sprintf("%016x", hash) + "_response_header.txt")
+	if err != nil {
+		log.Printf("failed to create file: %v", err)
+		return
+	}
+	defer fresph.Close()
+	resp.Header.Write(fresph)
 
 	// レスポンスボディをファイルに保存する
-	fb, err := os.Create(conf.DumpDir + "/" + time.Now().Format("20060102150405") + "." + fmt.Sprintf("%016x", hash) + "_body.txt")
+	fb, err := os.Create(conf.DumpDir + "/" + r.Host + "/" + time.Now().Format("20060102150405") + "." + fmt.Sprintf("%016x", hash) + "_response_body.txt")
 	if err != nil {
 		log.Printf("failed to create file: %v", err)
 		return
