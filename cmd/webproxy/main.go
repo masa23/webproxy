@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -116,14 +117,51 @@ func main() {
 	}
 }
 
+func handleTunneling(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s %s %s", r.RemoteAddr, r.Method, r.URL)
+	destConn, err := net.DialTimeout("tcp", r.Host, 10*time.Second)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	hijacker, ok := w.(http.Hijacker)
+	if !ok {
+		http.Error(w, "Hijacking not supported", http.StatusInternalServerError)
+		return
+	}
+	clientConn, _, err := hijacker.Hijack()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	go transfer(destConn, clientConn)
+	go transfer(clientConn, destConn)
+}
+
+func transfer(destination io.WriteCloser, source io.ReadCloser) {
+	defer destination.Close()
+	defer source.Close()
+	io.Copy(destination, source)
+}
+
 func proxy(w http.ResponseWriter, r *http.Request) {
+	// methodがCONNECTの場合は
 	if r.TLS == nil {
 		r.URL.Scheme = "http"
 	} else {
 		r.URL.Scheme = "https"
 	}
+	if r.Method == http.MethodConnect {
+		handleTunneling(w, r)
+		return
+	}
 	r.URL.Host = r.Host
-	resp, err := http.DefaultTransport.RoundTrip(r)
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	resp, err := transport.RoundTrip(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
